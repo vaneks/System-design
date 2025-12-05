@@ -1,0 +1,81 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(person, "Person", "Клиент")
+
+Boundary(internal, "Bank Platform") {
+  Container(mobile, "Mobile", "React", "Мобильное приложение")
+  Container(apiGw, "Api Gateway", "Nginx", "Балансировка и безопасность")
+  Container(auth, "Auth Service", "Keycloak / OAuth Proxy")
+  Container(payment, "Payment Service", "Java/Spring", "Платёжный сервис")
+  Container(wallet, "Wallet Service", "Java/Spring", "Списания/пополнения")
+  Container(antifraud, "Antifraud Service", "Java/Spring", "Антифрод")
+  Container(scoring, "Scoring Service", "Java/Spring", "Scoring")
+  Container(coreGw, "Core Bank Gateway Service", "Java/Spring", "Обертка")
+  Container(core, "Core Bank Service", "Java/Spring", "Legacy system")
+  Container(customer, "Customer Service", "Java/Spring", "Клиенты/Договора/Продукты")
+  Container(notification, "Notification Service", "Java/Spring", "Сервис отправки уведомлений")
+  Container(smtp, "SMTP Service", "", "Отправка почты")
+  Container(etl, "DWH Service", "Сервис для преобразования данных в DWH")
+  Container(report, "Reporting Service", "Сервис для формирования отчетов")
+
+
+  ContainerDb(paymentDb, "Payment DB", "PostgreSQL")
+  ContainerDb(walletDb, "Wallet DB", "PostgreSQL")
+  ContainerDb(antifraudDb, "Antifraud DB", "PostgreSQL")
+  ContainerDb(customerDb, "Customer DB", "PostgreSQL")
+  ContainerDb(coreDb, "Core DB", "PostgreSQL")
+  ContainerDb(notificationDb, "Notification DB", "PostgreSQL")
+  ContainerDb(reportDb, "Report DB", "PostgreSQL")
+  ContainerDb(dwhDb, "DWH / Analytics", "ClickHouse", "Хранилище данных для аналитики")
+  ContainerDb(reportMinio, "Minio", "Хранилище документов")
+  ContainerDb(logsDb, "Logs DB", "ClickHouse")
+}
+
+System_Ext(processing, "Processing Service", "Процессинговый центр")
+System_Ext(push, "PUSH/SMS Provider", "Провайдер пушей/SMS")
+
+Rel(apiGw, logsDb, "Kafka")
+Rel(apiGw, auth, "HTTP")
+
+Rel(person, mobile, "Использует МП")
+Rel(mobile, apiGw, "REST")
+Rel(apiGw, payment, "gRPC")
+Rel(apiGw, coreGw, "gRPC")
+
+Rel(customer, coreGw, "Kafka")
+Rel(customer, payment, "Kafka")
+Rel(customer, wallet, "Kafka")
+Rel(customer, customerDb, "Чтение/Запись")
+
+Rel(payment, wallet, "Списание денежных средств (gRPC)")
+Rel(payment, antifraud, "Платёж на проверку (gRPC)")
+Rel(payment, scoring, "Обучение модели (Kafka)")
+Rel(antifraud, antifraudDb, "Чтение/Запись")
+Rel(scoring, antifraudDb, "Чтение/Запись")
+
+Rel(payment, coreGw, "Обновление информации в Core (RabbitMQ)")
+Rel(coreGw, core, "REST")
+Rel(core, coreDb, "Чтение/Запись")
+
+Rel(wallet, walletDb, "Чтение/Запись")
+Rel(payment, paymentDb, "Чтение/Запись")
+
+Rel(payment, processing, "REST")
+Rel(payment, notification, "REST")
+
+Rel(notification, smtp, "API вызовы (SMTP)")
+Rel(notification, push, "REST")
+Rel(notification, notificationDb, "Чтение/Запись")
+
+Rel(payment, etl, "Отправка транзакций (Kafka)")
+Rel(etl, dwhDb, "Запись")
+
+Rel(report, reportDb, "Чтение/Запись")
+Rel(core, report, "RabbitMQ", "RabbitMQ")
+Rel(report, core, "RabbitMQ", "Отдает результат работы")
+Rel(report, dwhDb, "Чтение")
+Rel(report, reportMinio, "REST")
+
+
+@enduml

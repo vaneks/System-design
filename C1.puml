@@ -1,0 +1,28 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(person, "Person", "Клиент")
+
+Boundary(internal, "Bank Platform") {
+  Container(paymentPlatform, "Bank Payment Platform")
+}
+
+System_Ext(processing, "Processing Service", "Процессинговый центр")
+System_Ext(push, "PUSH/SMS Provider", "Провайдер пушей/SMS")
+System_Ext(core, "Core Bank", "Монолит")
+System_Ext(auth, "Auth", "Авторизация/аутентификация пользователей")
+System_Ext(minio, "Minio", "Хранилище документов")
+System_Ext(dwh, "DWH", "Аналитика")
+System_Ext(logsDb, "Logs DB", "БД логирования запросов/ответов")
+
+
+Rel(person, paymentPlatform, " ")
+Rel(paymentPlatform, processing, " ")
+Rel(paymentPlatform, push, " ")
+Rel(paymentPlatform, core, " ")
+Rel(paymentPlatform, auth, " ")
+Rel(paymentPlatform, minio, " ")
+Rel(paymentPlatform, dwh, " ")
+Rel(paymentPlatform, logsDb, " ")
+
+@enduml

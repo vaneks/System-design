@@ -1,0 +1,34 @@
+@startuml
+skinparam linetype ortho
+
+skinparam rectangle {
+    BackgroundColor white
+    BorderColor black
+    RoundCorner 15
+}
+
+rectangle "Core Banking Context" as Core
+rectangle "Notification Context" as Notif
+rectangle "Customer Context" as Cust
+rectangle "Payments Context" as Pay
+rectangle "Wallet Context" as Wallet
+rectangle "Antifraud Context" as AF
+rectangle "Scoring Context" as SC
+rectangle "DWH Context" as DWH
+rectangle "Reporting Context" as Report
+
+
+Pay     --> Core : ACL
+Pay     --> Notif : Publisher/Subscribe
+Pay     --> Wallet : Customer/Supplier
+Pay     --> AF : Customer/Supplier, upstream-downstream
+Pay     --> SC : Publisher/Subscribe
+Pay     --> DWH : Publisher/Subscribe
+Cust    --> Pay : Conformist/Customer-Supplier
+Cust    --> Wallet : Customer/Supplier
+Cust    --> Core : Customer/Supplier
+Core    --> Report : Customer/Supplier
+Report  --> DWH : Customer/Supplier
+
+
+@enduml
