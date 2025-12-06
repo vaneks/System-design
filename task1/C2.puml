@@ -12,7 +12,6 @@ Boundary(internal, "Bank Platform") {
   Container(antifraud, "Antifraud Service", "Java/Spring", "Антифрод")
   Container(scoring, "Scoring Service", "Java/Spring", "Scoring")
   Container(coreGw, "Core Bank Gateway Service", "Java/Spring", "Обертка")
-  Container(core, "Core Bank Service", "Java/Spring", "Legacy system")
   Container(customer, "Customer Service", "Java/Spring", "Клиенты/Договора/Продукты")
   Container(notification, "Notification Service", "Java/Spring", "Сервис отправки уведомлений")
   Container(smtp, "SMTP Service", "", "Отправка почты")
@@ -24,7 +23,6 @@ Boundary(internal, "Bank Platform") {
   ContainerDb(walletDb, "Wallet DB", "PostgreSQL")
   ContainerDb(antifraudDb, "Antifraud DB", "PostgreSQL")
   ContainerDb(customerDb, "Customer DB", "PostgreSQL")
-  ContainerDb(coreDb, "Core DB", "PostgreSQL")
   ContainerDb(notificationDb, "Notification DB", "PostgreSQL")
   ContainerDb(reportDb, "Report DB", "PostgreSQL")
   ContainerDb(dwhDb, "DWH / Analytics", "ClickHouse", "Хранилище данных для аналитики")
@@ -32,8 +30,10 @@ Boundary(internal, "Bank Platform") {
   ContainerDb(logsDb, "Logs DB", "ClickHouse")
 }
 
+System_Ext(core, "Core Bank Service", "Java/Spring", "Legacy system")
 System_Ext(processing, "Processing Service", "Процессинговый центр")
 System_Ext(push, "PUSH/SMS Provider", "Провайдер пушей/SMS")
+System_Ext(coreDb, "Core DB", "PostgreSQL")
 
 Rel(apiGw, logsDb, "Kafka")
 Rel(apiGw, auth, "HTTP")
