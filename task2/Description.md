@@ -64,6 +64,25 @@ POST rest/v1/callback/result
     "balance": 840.00
 }
 
+## Получение информации о платеже
+
+**Request**
+
+header : Authorization: Bear eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30eyJraWQiOiIxZWQzOGYyZC03ZDM5LTZkMTUtYjM5Yy01M2M2OTI5YzQ1NmYiLCJ0eXAiOiJiZWFyZXIiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJmZmlucGF5LnJ1Iiwic3ViIjoiNTE5ODc3IiwibmJmIjoxNzY0ODY3NTUyLCJwaG9uZSI6Ijc3Nzc3NzAwMDMiLCJpc3MiOiJNTyIsInR5cGUiOiJBQ0NFU1MiLCJleHAiOjE3NjQ4NjkzNTIsInZlcnNpb24iOiI4LjExLjMiLCJpYXQiOjE3NjQ4Njc1NTIsImp0aSI6IjFmMGQxMzI4LWYxOTgtNjJhOS04YmIyLTkzNTM1YjJiZjFhYyIsInVjaWQiOiJhMjA4ZTc0MC1jYTc5LTExZWUtODQ4OC02OTVjMDNlMzdmODgifQ.dChrimf9-C4D2PyJM35cMrwaoCpZjLiF78snAUbleVNIsO_wczEPc2i0pUw0s-f0CCeQsl629Rf_iB3VCQlmk6H2E8RSGkMpZVvlUQcEgjtNoUkHCmMLOHtxu1icBKe-z3UtzMSB1_buxFBoviMyVoD30suUq559DQQJ14rdnrrlyxsiHg7-8RqWeQyqmtayT4esLSXEuCuNSOXE7cWTnRhCAAvCnn2jDZMFpg9eq_QxgEh1vVygy8PNmD9Vmck8sAfDjRh1CnxOBSUXSyzyaT1jpVRv9GX26WCBiRQujKnd4QbslDxO8W0u9Xe_561IMTNwMLBLvdhmNb-XMl7fgA
+
+GET rest/v1/payment/{id}
+
+**Response**
+
+{
+    "paymentId" : "019b03ab-08e9-772d-9f15-b43d6f185341",
+    "status": "SUCCESS",
+    "amount": 840.00,
+    "currency": "USD",
+    "snd_account_number": "232323232323233223",
+    "rcv_account_number": "232323232323233222",
+    "timestamp": "2025-12-10:00:00Z"
+}
 
 # Формат сообщений для kafka
 
@@ -99,9 +118,9 @@ POST rest/v1/callback/result
 ## Описание процесса исполнения платежа
 
 - Из МП вызывается рест: **POST rest/v1/payment** c header, в котором содержится JWT-токен.
-- Пройдя валидацию и проверку токена в **API Gateway**, запрос попадается в Wallet Service.
+- Пройдя валидацию и проверку токена в **API Gateway**, запрос попадает в Wallet Service.
 - В Wallet Service делаем проверку на дедупликацию.
-- Из токена извлекается person_id, производится проверка и пользователя (существует/в статусе ACTIVE). Аналогично проверяем snd_account_number.
+- Из токена извлекается person_id, производится проверка пользователя (существует/в статусе ACTIVE). Аналогично проверяем snd_account_number.
 - Проверяем баланс, резервируем денежные средства и создаем запись в wallet_transactions в статусе Pending.
 - Формируем сообщение и с помощью паттерна Transactional Outbox производим отправку в МС Transactional Service/Payment Query Service.
 - В Payment Query Service обрабатываем сообщение и пишем в БД.
@@ -115,6 +134,11 @@ POST rest/v1/callback/result
 - В Wallet Service, в случае, если статус SUCCESS: обновляем статус платежа на Completed, подтверждаем списание.
 - Если статус FAILED: обновляем статус платежа на Failed, производим rollback.
 - Далее отправляем клиенту уведомление об успешном/неуспешном платеже (опционально).
+
+- Из МП вызывается рест **GET rest/v1/payment/{id}** c header, в котором содержится JWT-токен.
+- Пройдя валидацию и проверку токена в **API Gateway**, запрос попадает в Payment Query Service.
+- Из токена извлекается person_id, производится проверка пользователя (существует/в статусе ACTIVE). Далее проверяем принадлежность платежа клиенту.
+- Если платеж не принадлежит клиенту - отдаем 403. Иначе формируем ответ.
 
 ## Механизмы дедупликаций
 
