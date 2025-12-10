@@ -1,0 +1,29 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+
+System_Boundary(payment, "Payment Service") {
+
+    Component(consumer_pi, "PaymentInitiated Consumer", "Kafka Consumer", "Получает событие и запускает процесс списания")
+    Component(callback_api, "CallbackController", "REST Controller", "Обрабатывает callback от провайдера")
+    Component(domain, "Domain Model", "Domain", "Статусы платежа, retry, ошибки")
+    Component(repo, "PaymentRepository", "PostgreSQL DAO", "Хранение платежей")
+    Component(outbox, "Outbox", "Relational Outbox", "Запись PaymentResult")
+}
+
+ComponentDb(payment_db, "Payment DB", "PostgreSQL", "Данные о платежах")
+Rel(repo, payment_db, "read/write")
+Rel(outbox, payment_db, "хранит события")
+
+System_Ext(provider, "External Payment Provider", "Gateway")
+System_Ext(kafka, "Kafka")
+
+Rel(consumer_pi, domain, "Создать платеж")
+Rel(domain, outbox, "PaymentResult")
+Rel(domain, repo, "Создать/обновить платеж")
+Rel(provider, callback_api, "Callback (Success/Fail/Timeout)")
+Rel(callback_api, domain, "Обновить статус")
+Rel(outbox, kafka, "PaymentResult")
+Rel(kafka, consumer_pi, "Создание платежа")
+
+@enduml

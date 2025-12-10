@@ -1,0 +1,24 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+Person(user, "User")
+System_Boundary(wallet, "Payment Query Service") {
+
+    Component(query_api, "Query API", "REST Controller", "Получение информации о платеже")
+    Component(domain, "Domain Model", "Domain")
+    Component(repo, "QueryRepository", "ClickHouse DAO", "Работа с платежными операциями")
+    Component(event_handler, "PaymentResultHandler", "Kafka Consumer", "Обработка успешного/неуспешного платежа от Payment Service")
+
+    Rel(user, query_api, "Получить информацию о платеже")
+    Rel(query_api, domain, "Получить информацию о платеже")
+    Rel(domain, repo, "Запись транзакции/Получить информацию о платеже")
+    Rel(event_handler, domain, "Обновить/записать информацию о платеже")
+}
+
+ComponentDb(query_db, "Query DB", "ClickHouse", "Данные о платежах")
+Rel(repo, query_db, "read/write")
+
+System_Ext(kafka, "Kafka")
+Rel(kafka, event_handler, "PaymentResult/PaymentInitiated")
+
+@enduml

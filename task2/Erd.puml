@@ -1,0 +1,115 @@
+@startuml
+
+hide circle
+hide methods
+skinparam linetype ortho
+skinparam class {
+  BackgroundColor White
+  ArrowColor Black
+  BorderColor Black
+}
+
+
+entity "wallets" {
+  * id : UUID <<PK>>
+  --
+  person_id : UUID <<FK>>
+  balance : DECIMAL
+  currency : VARCHAR
+  account_number : VARCHAR
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "person" {
+  * id : UUID <<PK>>
+  --
+  first_name : VARCHAR
+  second_name : VARCHAR
+  middle_name : VARCHAR
+  full_name : VARCHAR
+  birthday : VARCHAR
+  document : VARCHAR
+  phone : VARCHAR
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "wallet_transactions" {
+  * id : UUID <<PK>>
+  --
+  wallet_id : UUID <<FK>>
+  payment_id : UUID <<FK>>
+  amount : DECIMAL
+  snd_account_number : VARCHAR
+  rcv_account_number : VARCHAR
+  status : VARCHAR
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "wallet_outbox" {
+  * id : UUID <<PK>>
+  --
+  payload : JSONB
+  status : VARCHAR
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "payments" {
+  * id : UUID <<PK>>
+  --
+  person_id : UUID <<FK>>
+  wallet_id : UUID <<FK>>
+  amount : DECIMAL
+  currency : VARCHAR
+  snd_account_number : VARCHAR
+  rcv_account_number : VARCHAR
+  status : VARCHAR
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "callback_payments" {
+  * id : UUID <<PK>>
+  --
+  payment_id : UUID <<FK>>
+  wallet_id : UUID <<FK>>
+  provider_id: UUID
+  amount : DECIMAL
+  currency : VARCHAR
+  snd_account_number : VARCHAR
+  rcv_account_number : VARCHAR
+  status : VARCHAR
+  retry : INT
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "payment_outbox" {
+  * id : UUID <<PK>>
+  --
+  payload : JSONB
+  status : VARCHAR
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "payment_view" {
+  * id : UUID <<PK>>
+  --
+  person_id : UUID <<FK>>
+  payment_id : UUID <<FK>>
+  amount : DECIMAL
+  currency : VARCHAR
+  snd_account_number : VARCHAR
+  rcv_account_number : VARCHAR
+  status : VARCHAR
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+
+
+@enduml

@@ -1,0 +1,30 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+System_Ext(gw, "API Gateway")
+System_Boundary(wallet, "Wallet Service") {
+
+    Component(wallet_api, "Wallet API", "REST Controller", "Создание транзакций, проверка баланса")
+    Component(command_handler, "Command Handler", "Application Layer", "Списания, резервы, подтверждения")
+    Component(domain, "Domain Model", "Domain", "Бизнес-логика кошелька")
+    Component(repo, "WalletRepository", "PostgreSQL DAO", "Работа с балансом и транзакциями")
+    Component(outbox, "Outbox", "Relational Outbox", "Запись событий PaymentInitiated")
+    Component(event_handler, "PaymentResultHandler", "Kafka Consumer", "Обработка успешного/неуспешного платежа от Payment Service")
+
+    Rel(gw, wallet_api, "Создать платеж")
+    Rel(wallet_api, command_handler, "Создать платеж")
+    Rel(command_handler, domain, "Выполнить бизнес-логику")
+    Rel(domain, repo, "Запись транзакции")
+    Rel(command_handler, outbox, "Записать PaymentInitiated")
+    Rel(event_handler, command_handler, "Подтвердить/компенсировать платеж")
+}
+
+ComponentDb(wallet_db, "Wallet DB", "PostgreSQL", "Баланс и транзакции")
+Rel(repo, wallet_db, "read/write")
+Rel(outbox, wallet_db, "хранит события")
+
+System_Ext(kafka, "Kafka")
+Rel(outbox, kafka, "PaymentInitiated")
+Rel(kafka, event_handler, "PaymentResult")
+
+@enduml
