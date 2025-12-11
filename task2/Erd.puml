@@ -96,6 +96,15 @@ entity "payment_outbox" {
   updated_at : TIMESTAMP
 }
 
+entity "callback_outbox" {
+  * id : UUID <<PK>>
+  --
+  payload : JSONB
+  status : VARCHAR
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
 entity "payment_view" {
   * id : UUID <<PK>>
   --
