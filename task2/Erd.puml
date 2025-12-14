@@ -21,6 +21,16 @@ entity "wallets" {
   updated_at : TIMESTAMP
 }
 
+entity "wallet_idempotency" {
+  * idempotency_key : UUID <<PK>>
+  --
+  request_hash    VARCHAR,
+  payment_id      UUID,
+  response_body   JSONB,
+  status          VARCHAR,
+  created_at      TIMESTAMP
+}
+
 entity "person" {
   * id : UUID <<PK>>
   --

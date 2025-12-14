@@ -10,6 +10,7 @@ participant "Wallet DB" as WalletDb
 participant "Kafka Broker" as KafkaWallet
 participant "Transactional DB" as TransactionalDb
 participant "Transactional Service" as Transactional
+participant "Payment Service" as Payment
 participant "Kafka Broker" as KafkaCallback
 participant "Callback Service" as Callback
 participant "Callback DB" as CallbackDb
@@ -19,8 +20,10 @@ participant "External Payment Provider" as ExtProvider
 User -> APIGW: POST (создать платёж)
 APIGW -> Wallet: Запрос на платеж (сумма, получатель)
 
+Wallet -> WalletDb: Создать транзакцию (status=NEW)
+Wallet --> WalletDb: commit (локальная транзакция)
 Wallet -> WalletDb: Списать сумму (резерв средств)
-Wallet -> WalletDb: Сохранить транзакцию (status=Pending)
+Wallet -> WalletDb: Сохранить транзакцию (status=PENDING)
 Wallet -> WalletDb: Записать событие\n"PaymentInitiated" в Outbox
 Wallet --> WalletDb: commit (локальная транзакция)
 
@@ -31,34 +34,44 @@ KafkaWallet -> Query: доставить событие PaymentInitiated
 Query -> QueryDb : Записать событие
 Query --> QueryDb : commit (локальная транзакция)
 
-Transactional -> TransactionalDb: Сохранить платеж (status=Pending)
+Transactional -> TransactionalDb: Сохранить платеж (status=PENDING)
 Transactional --> TransactionalDb: commit (локальная транзакция)
 
-Transactional -> CallbackGw: Вызвать API провайдера через Gateway\n(списание средств)
-CallbackGw -> ExtProvider: Вызвать API провайдера\n(списание средств)
+Transactional -> Payment: Вызвать API провайдера через Gateway\n(списание средств)
+Payment -> ExtProvider: Вызвать API провайдера\n(списание средств)
 
-Transactional -> TransactionalDb: Обновить статус платежа (status=Sent)
+Transactional -> TransactionalDb: Обновить статус платежа (status=SENT)
 Transactional --> TransactionalDb: commit (локальная транзакция)
 
-ExtProvider -> CallbackGw: Callback: платеж успешен (Success)
-CallbackGw -> Callback: Callback: платеж успешен (Success)
+ExtProvider -> CallbackGw: платеж успешен (SUCCESS)
+CallbackGw -> Callback: Callback: платеж успешен (SUCCESS)
 
-Callback -> CallbackDb : Сохранить статус платежа (Success)
+Callback -> CallbackDb : Сохранить статус платежа (SUCCESS)
 Callback --> CallbackDb : commit (локальная транзакция)
-Callback -> KafkaCallback: публикует событие PaymentResult (Success)\n(через Outbox + polling)
-KafkaCallback -> Transactional: доставить событие PaymentResult (Success)
+Callback -> KafkaCallback: публикует событие PaymentResult (SUCCESS)\n(через Outbox + polling)
+KafkaCallback -> Transactional: доставить событие PaymentResult (SUCCESS)
 
-Transactional -> TransactionalDb: Обновить статус платежа\n(Success)
+Transactional -> TransactionalDb: Обновить статус платежа\n(SUCCESS)
 Transactional -> TransactionalDb: Записать событие \n"PaymentResult" в Outbox
 Transactional --> TransactionalDb: commit (локальная транзакция)
 
-Transactional -> KafkaWallet: публикует событие PaymentResult (Success)
+Transactional -> KafkaWallet: публикует событие PaymentResult (SUCCESS)
 
-KafkaWallet -> Query: доставить событие PaymentResult (Success)
-Query -> QueryDb : Записать событие (Success)
+note over Transactional
+  Таймер ожидания callback
+  timeout = 3s
+end note
+alt Transactional received after timeout
+    Transactional -> TransactionalDb: Записать событие \n"PaymentResult" в Outbox
+    Transactional --> TransactionalDb: commit (локальная транзакция)
+    Transactional -> KafkaWallet: публикует событие PaymentResult (FAILED_TIMEOUT)
+end
+
+KafkaWallet -> Query: доставить событие PaymentResult (SUCCESS/FAILED_TIMEOUT)
+Query -> QueryDb : Записать событие (SUCCESS/FAILED_TIMEOUT)
 Query --> QueryDb : commit (локальная транзакция)
 
-KafkaWallet -> Wallet: доставить событие PaymentResult (Success)\n
+KafkaWallet -> Wallet: доставить событие PaymentResult (SUCCESS/FAILED_TIMEOUT)\n
 Wallet -> WalletDb: Подтвердить списание\n(окончательное списание)
 Wallet -> WalletDb: Обновить статус транзакции = Completed
 Wallet --> WalletDb: commit (локальная транзакция)
