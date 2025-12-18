@@ -1,0 +1,47 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+
+Boundary(internal, "Bank Platform") {
+  Container(wallet, "Wallet Service", "Java/Spring", "Списания/пополнения")
+  Container(transaction, "Transaction Service", "Java/Spring", "Проведение платежа")
+  Container(callback, "Callback Service", "Java/Spring", "Обработка callback")
+  Container(paymentQuery, "Payment Query Service", "Java/Spring", "Получение информации по платежам")
+  Container(notify, "Notification Service", "Java/Spring", "Отправка уведомлений")
+
+
+  Container(kafkaWallet, "Kafka", "Event Broker", "Асинхронный обмен событиями PaymentInitiated/PaymentResult между сервисами")
+  Container(kafkaCallback, "Kafka", "Event Broker", "Асинхронный обмен событиями между сервисами")
+  Container(kafkaNotify, "Kafka", "Event Broker", "Асинхронный обмен событиями между сервисами")
+
+  Container(kafkaCallbackDlq, "Kafka", "Event Broker", "Невалидный payload")
+  Container(kafkaTransactionDlq, "Kafka", "Event Broker", "Ошибка маппинга/неконсистентные данные")
+  Container(kafkaWalletDlq, "Kafka", "Event Broker", "Ошибка бизнес-валидации/несоответствие статуса")
+
+  Container(s1, "Minio", "Invalid message")
+
+}
+
+
+Rel(kafkaWallet, wallet, "Event Broker", "PaymentResult")
+Rel(wallet, kafkaTransactionDlq, "Kafka event", "PaymentResult")
+Rel(wallet, kafkaWallet, "Event Broker", "PaymentInitiated")
+Rel(kafkaWallet, paymentQuery, "Kafka event", "PaymentResult/PaymentInitiated")
+Rel(paymentQuery, kafkaTransactionDlq, "Kafka event", "PaymentResult")
+Rel(paymentQuery, kafkaWalletDlq, "Event Broker", "PaymentInitiated")
+Rel(callback, kafkaCallback, "Kafka", "Обновление статуса платежа")
+Rel(kafkaCallback, transaction, "Kafka event", "PaymentResult")
+Rel(transaction, kafkaCallbackDlq, "Kafka", "Обновление статуса платежа")
+Rel(transaction, kafkaWallet, "Kafka event", "PaymentResult")
+Rel(kafkaWallet, transaction, "Kafka event", "PaymentInitiated")
+Rel(transaction, kafkaWalletDlq, "Event Broker", "PaymentInitiated")
+Rel(wallet, kafkaNotify, "Event Broker", "push/sms")
+Rel(kafkaNotify, notify, "Kafka event", "push/sms")
+
+Rel(kafkaCallbackDlq, s1, "Kafka event")
+Rel(kafkaTransactionDlq, s1, "Kafka event")
+Rel(kafkaWalletDlq, s1, "Kafka event")
+
+
+
+@enduml

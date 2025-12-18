@@ -17,9 +17,11 @@ Boundary(internal, "Bank Platform") {
   ContainerDb(callbackDb, "Callback DB + Outbox", "PostgreSQL", "Статус платежей и outbox-события")
   ContainerDb(paymentDb, "Payment DB + Outbox", "PostgreSQL", "Статус платежей и outbox-события")
   ContainerDb(paymentQueryDb, "PaymentQuery DB", "ClickHouse", "Информация о платежах")
+  ContainerDb(paymentQueryRedis, "PaymentQuery DB", "Redis", "Информация о платежах (Cache)")
 
   Container(kafkaWallet, "Kafka", "Event Broker", "Асинхронный обмен событиями PaymentInitiated/PaymentResult между сервисами")
   Container(kafkaCallback, "Kafka", "Event Broker", "Асинхронный обмен событиями между сервисами")
+  Container(kafkaPayment, "Kafka", "Event Broker", "Асинхронный обмен событиями между сервисами")
 }
 
 
@@ -37,14 +39,18 @@ Rel(transaction, payment, "HTTPS", "Внешний вызов через gateway
 Rel(payment, extPayment, "HTTPS", "Внешний вызов API(дебетование)")
 Rel(payment, paymentDb, "HTTPS", "Внешний вызов API(дебетование)")
 Rel(paymentDb, kafkaPayment, "Outbox", "PaymentResult")
+Rel(kafkaPayment, transaction, "Kafka event", "PaymentResult")
 Rel(extPayment, callbackGw, "HTTPS", "Финальный статус платежа")
 Rel(callbackGw, callback, "HTTPS", "Финальный статус платежа")
 Rel(kafkaCallback, transaction, "Kafka event", "PaymentResult")
-Rel(kafkaWallet, paymentQueryDb, "Kafka event", "PaymentInitiated")
-Rel(kafkaWallet, paymentQueryDb, "Kafka event", "PaymentResult")
+Rel(kafkaWallet, paymentQueryRedis, "Kafka event", "PaymentInitiated")
+Rel(paymentQueryRedis, paymentQueryDb, "Kafka event", "PaymentInitiated")
+Rel(kafkaWallet, paymentQueryRedis, "Kafka event", "PaymentResult")
+Rel(paymentQueryRedis, paymentQueryDb, "Kafka event", "PaymentResult")
 Rel(callback, callbackDb, "Kafka", "Обновление статуса платежа")
 Rel(callbackDb, kafkaCallback, "Outbox", "ProviderCallbackReceived")
-Rel(paymentQuery, paymentQueryDb, "JDBC", "Информация о платеже")
+Rel(paymentQuery, paymentQueryRedis, "JDBC", "Информация о платеже")
+Rel(paymentQueryRedis, paymentQueryDb, "JDBC", "Информация о платеже")
 Rel(transaction, transactionDb, "JDBC", "Обновление статуса платежа, запись, события PaymentResult в Outbox")
 Rel(transactionDb, kafkaWallet, "Event Broker", "PaymentResult")
 

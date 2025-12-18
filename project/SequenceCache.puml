@@ -1,0 +1,33 @@
+@startuml
+
+actor User
+
+participant "API Gateway" as APIGW
+participant "Payment Query Service" as Query
+participant "Cache Payment Query DB" as QueryRedis
+participant "Payment Query DB" as QueryDb
+queue "Kafka Broker" as Kafka
+
+Kafka -> QueryDb: Добавляем/обновляем данные
+
+alt CACHE HIT
+User -> APIGW: GET (получить данные по платёжу)
+APIGW -> Query: Запрос на получение данных по платежу
+
+Query -> QueryRedis: получить данные по платёжу
+QueryRedis --> Query: Payment details
+Query -> APIGW: Payment details
+APIGW -> User: Payment details
+end
+
+alt CACHE MISS
+User -> APIGW: GET (получить данные по платёжу)
+APIGW -> Query: Запрос на получение данных по платежу
+
+Query -> QueryDb: получить данные по платёжу
+QueryDb --> Query: Payment details
+Query -> APIGW: Payment details
+APIGW -> User: Payment details
+end
+
+@enduml
