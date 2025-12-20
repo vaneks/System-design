@@ -86,6 +86,35 @@ Fallback:
 | Transaction Service → Wallet Service / Payment Query Service | event         | Transaction Service | Wallet Service, Payment Query Service      | payments.result    | payments.transactional.dlq | Сообщения попадают в DLQ при ошибке бизнес-валидации или несоответствии статуса. Автоматический retry отключён, так как проблема чаще логическая. Требуется анализ и ручное решение.                                                                |
 | Wallet Service → Notification Service                        | event         | Wallet Service      | Notification Service                       | payments.completed | payments.notifications.dlq | Ошибки доставки. События идемпотентны, допускается повторная обработка без влияния на финансовый контур.                                                                                                                                            |
 
+## Backpressure и обработка всплесков нагрузки
+
+Ограничение конкуренции консьюмеров:
+Transaction Service:
+- 4 consumers threads на инстанс (CPU-bound бизнес-логика и операции с БД, масштабирование по lag в payments.initiated и payments.callback)
+Wallet Service:
+- 2 consumers threads на инстанс (операции с балансами и требования к порядку обработки)
+Notification Service:
+- 8 consumers threads на инстанс (отсутствие влияния на финансовый контур)
+
+Очереди внутри обработчиков:
+- фиксированный размер очереди
+- при заполнении:
+    - consumer перестаёт забирать новые сообщения
+    - offset не коммитится
+    - сообщения остаются в брокере и не теряются
+    - замедление обработки
+    - нефинансовые операции (уведомления, логирование) не блокируют критический путь платежа
+
+
+Поведение при перегрузке:
+- При достижении пороговых значений применяется следующий набор мер:
+    - временная приостановка чтения из брокера
+    - backpressure поднимается на уровень Kafka
+
+Стратегия retry без retry-storm:
+- retry выполняется с экспоненциальной задержкой
+- количество попыток ограничено
+
 
 ---
 
