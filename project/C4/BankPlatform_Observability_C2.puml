@@ -17,10 +17,18 @@ Boundary(internal, "Bank Platform") {
   ContainerDb(callbackDb, "Callback DB + Outbox", "PostgreSQL", "Статус платежей и outbox-события")
   ContainerDb(paymentDb, "Payment DB + Outbox", "PostgreSQL", "Статус платежей и outbox-события")
   ContainerDb(paymentQueryDb, "PaymentQuery DB", "ClickHouse", "Информация о платежах")
+  ContainerDb(paymentQueryRedis, "PaymentQuery DB", "Redis", "Информация о платежах (Cache)")
 
   Container(kafkaWallet, "Kafka", "Event Broker", "Асинхронный обмен событиями PaymentInitiated/PaymentResult между сервисами")
   Container(kafkaCallback, "Kafka", "Event Broker", "Асинхронный обмен событиями между сервисами")
   Container(kafkaPayment, "Kafka", "Event Broker", "Асинхронный обмен событиями между сервисами")
+
+   Container(prometheus, "Prometheus", "Metrics Storage", "Сбор метрик")
+   Container(grafana, "Grafana", "Dashboards", "Визуализация метрик и SLO")
+   Container(loki, "Loki", "Log Storage", "Централизованные логи")
+   Container(otel, "OpenTelemetry Collector", "Tracing / Metrics", "Агрегация трейсов")
+   Container(tempo, "Tempo", "Tracing Backend", "Distributed tracing")
+
 }
 
 
@@ -42,12 +50,44 @@ Rel(kafkaPayment, transaction, "Kafka event", "PaymentResult")
 Rel(extPayment, callbackGw, "HTTPS", "Финальный статус платежа")
 Rel(callbackGw, callback, "HTTPS", "Финальный статус платежа")
 Rel(kafkaCallback, transaction, "Kafka event", "PaymentResult")
-Rel(kafkaWallet, paymentQueryDb, "Kafka event", "PaymentInitiated")
-Rel(kafkaWallet, paymentQueryDb, "Kafka event", "PaymentResult")
+Rel(kafkaWallet, paymentQuery, "Kafka event", "PaymentInitiated")
+Rel(paymentQueryRedis, paymentQueryDb, "Kafka event", "PaymentInitiated")
+Rel(kafkaWallet, paymentQuery, "Kafka event", "PaymentResult")
+Rel(paymentQueryRedis, paymentQueryDb, "Kafka event", "PaymentResult")
 Rel(callback, callbackDb, "Kafka", "Обновление статуса платежа")
 Rel(callbackDb, kafkaCallback, "Outbox", "ProviderCallbackReceived")
-Rel(paymentQuery, paymentQueryDb, "JDBC", "Информация о платеже")
+Rel(paymentQuery, paymentQueryRedis, "JDBC", "Информация о платеже")
+Rel(paymentQueryRedis, paymentQueryDb, "JDBC", "Информация о платеже")
 Rel(transaction, transactionDb, "JDBC", "Обновление статуса платежа, запись, события PaymentResult в Outbox")
 Rel(transactionDb, kafkaWallet, "Event Broker", "PaymentResult")
+
+
+Rel(apiGw, prometheus, "metrics")
+Rel(wallet, prometheus, "metrics")
+Rel(transaction, prometheus, "metrics")
+Rel(payment, prometheus, "metrics")
+Rel(callback, prometheus, "metrics")
+Rel(paymentQuery, prometheus, "metrics")
+Rel(kafkaWallet, prometheus, "broker metrics")
+
+Rel(prometheus, grafana, "query metrics")
+
+
+Rel(apiGw, loki, "logs")
+Rel(wallet, loki, "logs")
+Rel(transaction, loki, "logs")
+Rel(payment, loki, "logs")
+Rel(callback, loki, "logs")
+Rel(paymentQuery, loki, "logs")
+
+Rel(apiGw, otel, "traces")
+Rel(wallet, otel, "traces")
+Rel(transaction, otel, "traces")
+Rel(payment, otel, "traces")
+Rel(callback, otel, "traces")
+Rel(paymentQuery, otel, "traces")
+
+Rel(otel, tempo, "export traces")
+Rel(tempo, grafana, "trace visualization")
 
 @enduml

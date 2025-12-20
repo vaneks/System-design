@@ -1,0 +1,74 @@
+@startuml
+actor User
+
+participant "API Gateway" as APIGW
+participant "Wallet Service" as Wallet
+participant "Wallet DB" as WalletDb
+queue "Kafka" as Kafka
+participant "Transaction Service" as Transactional
+participant "Transaction DB" as TransactionalDb
+participant "Payment Service" as Payment
+participant "Payment DB" as PaymentDb
+participant "Resilience HTTP Client\n(Retry + CB)" as Resilience
+participant "External Payment Provider" as Provider
+
+== Инициация платежа ==
+
+User -> APIGW: POST /payment
+APIGW -> Wallet: createPayment
+
+Wallet -> WalletDb: create tx (NEW)
+Wallet -> WalletDb: reserve funds
+Wallet -> WalletDb: update tx (PENDING)
+Wallet -> WalletDb: outbox PaymentInitiated
+Wallet --> WalletDb: commit
+
+Wallet -> Kafka: PaymentInitiated
+
+Kafka -> Transactional: PaymentInitiated
+Transactional -> TransactionalDb: create payment (PENDING)
+Transactional --> TransactionalDb: commit
+
+Transactional -> Payment: process payment
+
+Payment -> PaymentDb: status = CALLING_PROVIDER
+Payment --> PaymentDb: commit
+
+== Вызов провайдера ==
+
+loop retry (max=3, exp backoff + jitter)
+    Payment -> Resilience: call provider
+    Resilience -> Provider: debit
+    Resilience --> Payment: timeout
+end
+
+== Все попытки исчерпаны ==
+
+Resilience --> Payment: failure
+Payment -> Payment: Circuit Breaker -> OPEN
+
+== Fallback==
+
+Payment -> PaymentDb: update status = PENDING_PROVIDER
+Payment --> PaymentDb: commit
+
+Payment -> Transactional: PaymentResult(PENDING_PROVIDER)
+
+Transactional -> TransactionalDb: update status = PENDING_PROVIDER
+Transactional --> TransactionalDb: commit
+Transactional -> Kafka: PaymentResult(PENDING_PROVIDER)
+
+Kafka -> Wallet: PaymentResult(PENDING_PROVIDER)
+Wallet -> WalletDb: update tx = PENDING_PROVIDER
+Wallet --> WalletDb: commit
+
+Wallet --> APIGW: 202 Accepted
+APIGW --> User: Payment is processing
+
+note over Payment
+Платёж поставлен в очередь
+на асинхронную дообработку
+или ожидание callback
+end note
+
+@enduml

@@ -8,8 +8,58 @@
 | Transaction → Payment Service              | —       | Kafka retry + DLQ          | —   | Consumer group          | —          | DLQ       | Асинхронная передача команд, устойчивость за счёт брокера сообщений                                                                                                  |
 | Payment Service → Payment Provider         | 2s      | 3 (exp. backoff + jitter)  | да  | Отдельный   client pool | да         | PENDING   | Только в случае, если Payment Provider имеет защиту от двойных списаний!!! Внешний нестабильный сервис, нужен CB, retries с backoff, fallback в отложенную обработку |
 | BFF → Payment Query Service                | 1s      | нет                        | нет | Thread pool             | да         | нет       | Read-only операции, предпочтительнее быстрый отказ                                                                                                                   |
-| Notification → SMS Provider                | 3s      | 5 (exp. backoff + jitter)) | да  | Отдельный client pool   | да         | DLQ       | Внешний провайдер, допустима задержка доставки                                                                                                                       |
+| Notification → Notification Provider       | 3s      | 5 (exp. backoff + jitter)) | да  | Отдельный client pool   | да         | DLQ       | Внешний провайдер, допустима задержка доставки                                                                                                                       |
 | API Gateway → Wallet/Payment Query Service | 1s      | нет                        | да  | Connection pool         | да         | 429 / 503 | Первая линия защиты: лимиты, таймауты, защита от каскадных отказов                                                                                                   |
+
+# Payment Service → Payment Provider
+
+Ретраим только технические ошибки:
+- timeout;
+- connection reset;
+- HTTP 5xx;
+- HTTP 429.
+
+Параметры:
+- maxAttempts = 3
+- backoff = exponential
+- initialDelay = 200ms
+- maxDelay = 2s
+- jitter = ±30%
+
+Circuit Breaker:
+- Sliding window: 50 последних вызовов
+- Failure rate threshold: ≥ 50%
+- Slow call threshold: ≥ 2s
+- Slow call rate threshold: ≥ 50%
+- Open state duration: 30 секунд
+
+Half-Open:
+- разрешаем 5 пробных запросов;
+- при ≥1 ошибке — возвращаемся в OPEN;
+- при 100% успехе — CLOSED.
+
+Fallback:
+Если все retry исчерпаны или Circuit Breaker в состоянии OPEN, тогда:
+- платёж переводится в PENDING_PROVIDER
+- событие отправляется в Kafka;
+- клиент получает 202 Accepted.
+
+# Notification Service → Notification Provider
+
+Ретраим только технические ошибки:
+- timeout;
+- HTTP 5xx.
+
+Параметры:
+- maxAttempts = 5
+- backoff = exponential + jitter
+
+Circuit Breaker:
+- Быстро уходим в OPEN, чтобы не блокировать основной поток.
+
+Fallback:
+- Сообщение отправляется в DLQ;
+- Возможна ручная или отложенная повторная отправка.
 
 ---
 
@@ -28,11 +78,14 @@
 
 ## Dead Letter Queue (DLQ)
 
-| Сценарий                                                   | Основной топик     | DLQ-топик                  | Причина попадания в DLQ                        |
-|------------------------------------------------------------|--------------------|----------------------------|------------------------------------------------|
-| Transaction Service → Wallet Service/Payment Query Service | payments.result    | payments.transactional.dlq | Ошибка бизнес-валидации/несоответствие статуса |
-| Wallet Service → Transaction Service/Payment Query Service | payments.initiated | payments.wallet.dlq        | Ошибка маппинга/неконсистентные данные         |
-| Callback Service → Transaction Service                     | payments.callback  | provider.callback.dlq      | Невалидный payload                             |
+
+| Cценарий                                                     | Тип сообщения | Producer            | Consumer                                   | Основной топик     | DLQ                        | Комментарий по DLQ-обработке                                                                                                                                                                                                                        |
+|--------------------------------------------------------------|---------------|---------------------|--------------------------------------------|--------------------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Wallet Service → Transaction Service / Payment Query Service | command       | Wallet Service      | Transaction Service, Payment Query Service | payments.initiated | payments.wallet.dlq        | Сообщения попадают в DLQ при ошибке маппинга или неконсистентных данных. Автоматический retry ограничен, так как повторная инициация платежа может привести к дубликатам. Разбор — ручной с возможной повторной отправкой после исправления данных. |
+| Callback Service → Transaction Service                       | event         | Callback Service    | Transaction Service                        | payments.callback  | provider.callback.dlq      | Используется при невалидном payload или нарушении контракта провайдера. Повторная обработка возможна после исправления формата или логики парсинга.                                                                                                 |
+| Transaction Service → Wallet Service / Payment Query Service | event         | Transaction Service | Wallet Service, Payment Query Service      | payments.result    | payments.transactional.dlq | Сообщения попадают в DLQ при ошибке бизнес-валидации или несоответствии статуса. Автоматический retry отключён, так как проблема чаще логическая. Требуется анализ и ручное решение.                                                                |
+| Wallet Service → Notification Service                        | event         | Wallet Service      | Notification Service                       | payments.completed | payments.notifications.dlq | Ошибки доставки. События идемпотентны, допускается повторная обработка без влияния на финансовый контур.                                                                                                                                            |
+
 
 ---
 
@@ -54,6 +107,22 @@ Cache-Aside выбран:
 - пользователь может увидеть статус с небольшой задержкой;
 - деньги при этом всегда корректны.
 
+## Защита от cache stampede (массовых запросов)
+- Только один запрос читает из ClickHouse при cache miss (остальные ждут результат из Redis).
+- Популярные запросы (дашборды, отчёты) периодически прогреваются.
+
+## Обновление данных
+При PaymentResult: 
+- Полная перезапись записи в Redis
+- Статус: PENDING_PROVIDER (TTL 60s).
+- Статусы: SUCCESS, FAILED (TTL 24h).
+
+При PaymentInitiated:
+- Установка короткого TTL (30s)
+- Данные также пишутся в ClickHouse.
+
+Архивные данные (история операций за дни/месяцы) не кэшируем - берем с ClickHouse.
+
 ---
 
 # Observability: метрики, логи, трейсы, SLI/SLO
@@ -67,7 +136,7 @@ Prometheus:
 
 Grafana:
 - Универсальный UI для метрик, логов и трейсов.
-- Поддержка SLO-дэшбордов.
+- Поддержка SLO-дашбордов.
 - Возможность быстро показать метрики
 
 Loki:
@@ -207,6 +276,42 @@ Notification dashboard.
         - для Kafka consumer-ов;
         - для HTTP вызовов провайдера;
         - для работы с БД.
+
+Ключи лимитирования:
+
+| Сервис               | Ключ       | Ответ |
+|----------------------|------------|-------|
+| API Gateway          | clientId   | 429   |
+| Payment Service      | providerId | 503   |
+| Notification Service | providerId | 503   |
+
+Burst-поведение
+
+Допускаем short burst:
+- Token Bucket;
+- ограниченный размер burst-а.
+
+Что изолируем:
+
+Payment Service:
+- providerHttpPool — только для вызовов Payment Provider
+- kafkaConsumerPool — только для Kafka сообщений
+- dbPool — только для транзакций БД
+
+Wallet Service:
+- apiRequestPool — входящие HTTP запросы
+- eventConsumerPool — обработка Kafka событий
+- dbPool — операции с балансами и резервами
+
+### Ожидаемый эффект от Bulkhead-изоляции
+
+| Риск                | Как предотвращается                                                                |
+|---------------------|------------------------------------------------------------------------------------|
+| Каскадный отказ     | Проблема в одном пуле (HTTP к провайдеру) не влияет на другие пулы                 |
+| Starvation          | Пулы для DB и Kafka изолированы и всегда имеют гарантированный доступ к ресурсам   |
+| «Зависание» сервиса | Внешний провайдер не может «съесть» все потоки и заблокировать внутренние операции |
+| Потеря платежей     | Асинхронные потоки продолжают работу даже при деградации внешних систем            |
+
 
 ---
 
