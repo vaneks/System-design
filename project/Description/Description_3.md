@@ -86,6 +86,12 @@ Fallback:
 | Transaction Service → Wallet Service / Payment Query Service | event         | Transaction Service | Wallet Service, Payment Query Service      | payments.result    | payments.transactional.dlq | Сообщения попадают в DLQ при ошибке бизнес-валидации или несоответствии статуса. Автоматический retry отключён, так как проблема чаще логическая. Требуется анализ и ручное решение.                                                                |
 | Wallet Service → Notification Service                        | event         | Wallet Service      | Notification Service                       | payments.completed | payments.notifications.dlq | Ошибки доставки. События идемпотентны, допускается повторная обработка без влияния на финансовый контур.                                                                                                                                            |
 
+DLQ мониторятся по:
+- количеству сообщений;
+- времени нахождения сообщения в DLQ;
+
+---
+
 ## Backpressure и обработка всплесков нагрузки
 
 Ограничение конкуренции консьюмеров:
@@ -112,7 +118,8 @@ Notification Service:
     - backpressure поднимается на уровень Kafka
 
 Стратегия retry без retry-storm:
-- retry выполняется с экспоненциальной задержкой
+- retry выполняется с экспоненциальной задержкой. 
+- retry реализован через отдельные retry-topics с увеличивающейся задержкой
 - количество попыток ограничено
 
 
@@ -331,6 +338,8 @@ Wallet Service:
 - apiRequestPool — входящие HTTP запросы
 - eventConsumerPool — обработка Kafka событий
 - dbPool — операции с балансами и резервами
+
+---
 
 ### Ожидаемый эффект от Bulkhead-изоляции
 
