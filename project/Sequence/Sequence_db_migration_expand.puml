@@ -1,0 +1,34 @@
+@startuml
+
+participant DB_Migrator as DB_Migrator
+database Wallet_DB as DB
+participant Feature_Flags as FF
+participant Wallets_Service as WS
+
+== Expand (добавляем новое) ==
+DB_Migrator -> DB : ADD COLUMN status_reason NULL or CREATE payments_v2
+DB --> DB_Migrator : OK
+
+== Флаг выключен: работает старый путь ==
+WS -> FF : get useNewSchema
+FF --> WS : false
+WS -> DB : write old schema only
+DB --> WS : OK
+
+== Dual write (подготовка данных) ==
+WS -> FF : get useNewSchema
+FF --> WS : false
+WS -> DB : write old schema + write new schema (shadow)
+DB --> WS : OK
+
+== Switch read (включаем флаг) ==
+WS -> FF : get useNewSchema
+FF --> WS : true
+WS -> DB : read new schema
+DB --> WS : OK
+
+== Contract (удаляем старое после окна совместимости) ==
+DB_Migrator -> DB : DROP old column/table after all pods updated
+DB --> DB_Migrator : OK
+
+@enduml

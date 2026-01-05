@@ -1,0 +1,117 @@
+stages:
+  - build
+  - test
+  - release
+  - deploy
+
+# Variables
+.maven_vars: &maven_vars
+  MAVEN_CLI_OPTS: "--batch-mode"
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+
+.gitlab_registry_vars: &gitlab_registry_vars
+  REGISTRY_USER: "${CI_REGISTRY_USER}"
+  REGISTRY_PASSWORD: "${CI_REGISTRY_PASSWORD}"
+  REGISTRY: "${CI_REGISTRY}"
+
+.docker_vars: &docker_vars
+  DOCKER_FILE: "Dockerfile"
+  DOCKER_NAME: "${CI_REGISTRY}/${CI_PROJECT_NAMESPACE}/${CI_PROJECT_NAME}"
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_DRIVER: overlay2
+  JAVA_OPTS: "-Dapp.stand=dev"
+  TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX: ${TESTCONTAINERS_HUB}/
+
+
+# Jobs templates
+.build_binary_definition: &build_binary_definition
+  image: harbor2.project.ru/library/maven:3.8.5-openjdk-17
+  stage: build
+  artifacts:
+    paths:
+      - target/*.jar
+    expire_in: 1 week
+  variables:
+    <<:
+      - *maven_vars
+      - *docker_vars
+    TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX: ${TESTCONTAINERS_HUB}/
+  before_script:
+    - export MAVEN_REVISION=$(if [[ ${IS_A_TAG} == "true" ]]; then echo "${CI_COMMIT_TAG#v}"; else echo "${CI_COMMIT_REF_SLUG}"; fi)
+    - export MAVEN_CHANGELIST=$(if [[ ${IS_A_TAG} != "true" ]]; then echo "-${CI_COMMIT_SHORT_SHA}"; fi)
+  script:
+    - mvn ${MAVEN_CLI_OPTS} clean package
+      -Drevision=${MAVEN_REVISION}
+      -Dchangelist=${MAVEN_CHANGELIST}
+      --settings ${MAVEN_SETTINGS_XML}
+      -DskipTests
+
+.test_sonar_scanner_definition: &test_sonar_scanner_definition
+  image:
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [ "" ]
+  stage: test
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  before_script:
+    - export SONAR_PROJECT_VERSION=$(if [[ ${IS_A_TAG} == "true" ]]; then echo "${CI_COMMIT_TAG#v}"; else echo "${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"; fi)
+  script:
+    - sonar-scanner -Dsonar.qualitygate.wait=true -Dsonar.sources=src -Dsonar.java.binaries=target -Dsonar.projectName=${CI_PROJECT_NAME} -Dsonar.projectVersion=${SONAR_PROJECT_VERSION} -Dsonar.projectKey=${CI_SERVER_HOST//./_}_project_${CI_PROJECT_ID}
+  rules:
+    - allow_failure: true
+
+.test_maven_definition: &test_maven_definition
+  image: harbor2.project.ru/library/maven:3.8.5-openjdk-17
+  stage: test
+  services:
+    - alias: docker
+      name: docker:19.03.5-dind
+  artifacts:
+    paths:
+      - target/*.jar
+    expire_in: 1 week
+  variables:
+    <<:
+      - *maven_vars
+      - *docker_vars
+  before_script:
+    - export MAVEN_REVISION=$(if [[ ${IS_A_TAG} == "true" ]]; then echo "${CI_COMMIT_TAG#v}"; else echo "${CI_COMMIT_REF_SLUG}"; fi)
+    - export MAVEN_CHANGELIST=$(if [[ ${IS_A_TAG} != "true" ]]; then echo "-${CI_COMMIT_SHORT_SHA}"; fi)
+  script:
+    - mvn ${MAVEN_CLI_OPTS} clean package
+      -Drevision=${MAVEN_REVISION}
+      -Dchangelist=${MAVEN_CHANGELIST}
+      --settings ${MAVEN_SETTINGS_XML}
+
+.release_image_definition: &release_image_definition
+  image: docker:19
+  stage: release
+  services:
+    - alias: docker
+      name: docker:19.03.5-dind
+  before_script:
+    - export TAGS=$(if [[ ${IS_A_TAG} == "true" ]]; then echo "${DOCKER_NAME}:latest,${DOCKER_NAME}:${CI_COMMIT_TAG#v}"; else echo "${DOCKER_NAME}:branch-${CI_COMMIT_REF_SLUG}"; fi)
+  script:
+    - apk update && apk upgrade && apk add --no-cache bash
+    - bash ./scripts/ci_docker_build_push
+
+deploy-rollout:
+  image: alpine/git
+  stage: deploy
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.com/infra/k8s-manifests.git
+    - cd k8s-manifests/apps/payment-service
+    - sed -i "s|image: .*|image: ${DOCKER_NAME}:${CI_COMMIT_TAG#v}|" rollout.yaml
+    - git commit -am "Release payment-service ${CI_COMMIT_TAG}"
+    - git push origin main
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9.]+$/'
+  when: manual
