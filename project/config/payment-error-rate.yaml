@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: payment-error-rate
+  namespace: payments
+spec:
+  args:
+    - name: payment-service
+      description: payment-service
+
+  metrics:
+    - name: http-5xx-rate
+      interval: 30s
+      successCondition: result < 0.01
+      failureLimit: 1
+
+      # рост 5xx
+      # автоматический rollback при деградации
+
+    - name: pod-readiness
+      interval: 30s
+      successCondition: result == 1
+      failureLimit: 1
+
+      # pod not ready
+      # выявление crash / startup loop

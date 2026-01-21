@@ -1,24 +1,84 @@
 # OIDC Authorization Code Flow для UI-клиента
 
-## Service-to-Service security + OIDC
+# Token Types
 
-# Секции:
+## User JWT
 
-- AuthN/AuthZ overview
-- OIDC Authorization Code Flow
-- Service-to-Service trust model
-- Token types
-- Scopes / roles
-- Failure modes
+Используется для user-initiated запросов.
 
-| Caller      | Callee        | Token type  | Context | Где проверяется       | Scopes / Roles    |
-|-------------|---------------|-------------|---------|-----------------------|-------------------|
-| Mobile      | Wallet        | User JWT    | user    | Wallet Service        | payments.create   |
-| Mobile      | Payment Query | User JWT    | user    | Payment Query Service | query.read        |
-| Transaction | Wallet        | Service JWT | service | Wallet Service        | wallet.internal   |
-| Transaction | Payment Query | Service JWT | service | Payment Query Service | query.internal    |
-| Callback    | Transaction   | Service JWT | service | Transaction Service   | payments.callback |
+Содержит:
+- sub — user id
+- preferred_username
+- iss — issuer (Keycloak)
+- aud — API audience
+- exp — expiration
+- scope / roles
 
+## Service JWT
+
+Используется для service-to-service вызовов.
+
+Получается через:
+- OAuth2 Client Credentials Grant
+
+Характеристики:
+- Нет user identity
+- sub = service account
+- Ограниченные internal scopes
+
+## Таблица доверия
+
+| Caller      | Callee       | Token type  | Context | Где проверяется | Scopes / Roles                                       |
+|-------------|--------------|-------------|---------|-----------------|------------------------------------------------------|
+| Mobile      | API Gateway  | User JWT    | user    | Gateway         | —                                                    |
+| API Gateway | Wallet       | User JWT    | user    | Wallet          | payments.create (Создание / проведение платежа)      |
+| API Gateway | PaymentQuery | User JWT    | user    | PaymentQuery    | query.read (Просмотр истории и статусов)             |
+| Transaction | Wallet       | Service JWT | service | Wallet          | wallet.internal (Internal wallet operations)         |
+| Callback    | Transaction  | Service JWT | service | Transaction     | payments.callback (Обработка callback от провайдера) |
+
+- Gateway не подменяет и не выпускает токены
+- Gateway только проксирует Authorization header
+- Внутренние сервисы:
+    - принимают только HTTPS 
+    - принимают только валидные JWT 
+    - проверяют scopes строго по endpoint’ам
+
+## Авторизация
+
+Каждый сервис:
+
+Валидирует JWT:
+- signature
+- expiration
+- issuer
+- audience
+
+Проверяет:
+- наличие нужного scope
+- роль (если применимо)
+
+
+## Failure Modes
+
+Token invalid / expired:
+- reject (401)
+- Клиент обязан вызывать refresh token
+
+Missing / wrong scope:
+- Service возвращает: 403 Forbidden
+- Логируется security event
+
+Identity Provider недоступен:
+- Уже выданные access tokens продолжают работать
+- Refresh невозможен
+- Система деградирует, но не падает
+
+Gateway bypass:
+- сервисы валидируют JWT
+- internal endpoints защищены scopes
+- network policy ограничивает ingress
+
+---
 
 # 12-Factor Configuration
 
@@ -31,3 +91,19 @@
 - Webhook signing secrets
 - Feature flags
 - Timeout / retry / CB параметры
+
+---
+
+# Поток OAuth2 Client Credentials для M2M (интеграции партнеров/мерчантов).
+
+Шаги:
+- Payment Provider отправляет запрос в Keycloak
+- Keycloak:
+  - проверяет client_id + secret 
+  - проверяет разрешения
+- Keycloak возвращает access_token
+- Payment Provider вызывает Callback Gateway с Authorization: Bearer <token>
+- Callback Gateway:
+  - валидирует JWT (signature, exp, aud)
+  - проверяет роли / scope
+- Callback Gateway возвращает ответ

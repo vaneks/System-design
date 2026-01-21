@@ -11,6 +11,7 @@ database "Payments DB" as DB
 PP -> GW: POST /provider/callback\nbody={paymentId,status,eventId}\nX-Timestamp\nX-Signature=hmac(ts+'.'+body)
 
 == Проверка подписи и timestamp ==
+
 GW -> GW: Проверить X-Timestamp\n(<= 5 минут)
 
 alt timestamp слишком старый
@@ -23,6 +24,12 @@ GW -> GW: expected_hmac =\nHMAC(secret, ts+'.'+body)
 alt подпись не совпала
     GW --> PP: 401 Unauthorized
     return
+end
+
+
+GW -> GW: verify(signature, current)
+alt invalid
+  GW -> GW: verify(signature, previous)
 end
 
 == Защита от replay ==

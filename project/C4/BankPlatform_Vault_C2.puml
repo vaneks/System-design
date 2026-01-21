@@ -1,30 +1,27 @@
 @startuml
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
 
-title Vault integration: Vault Agent sidecar + 12-factor configuration
+title Vault integration: Vault Agent sidecar + Kubernetes Auth
 
 System_Boundary(k8s, "Kubernetes Cluster") {
 
-    Container(vaultAgent, "Vault Agent (Sidecar)", "vault-agent", "Аутентифицируется в Vault (K8s auth)\nи рендерит секреты в файл / ENV")
-
-    Container(appWallet, "Wallet Service", "Java / Spring", "Читает секреты из файла / ENV (12-factor)\nИспользует для подписи / доступа к провайдеру")
-    Container(appQuery, "Payment Query Service", "Java / Spring", "Читает секреты из файла / ENV (12-factor)\nИспользует для подписи / доступа к провайдеру")
-    Container(appCallback, "Callback Service", "Java / Spring", "Читает секреты из файла / ENV (12-factor)\nИспользует для подписи / доступа к провайдеру")
-    ContainerDb(walletDb, "Wallet DB", "PostgreSQL", "Данные платежей")
-    ContainerDb(queryDb, "Payment Query  DB", "PostgreSQL", "Информация о платежах")
-    ContainerDb(callbackDb, "Callback DB", "PostgreSQL", "Информация об ответах от Payment Provider")
-
-    Container_Ext(vault, "HashiCorp Vault", "Secrets Manager", "KV secrets\nDynamic credentials\nAudit log\nPolicies")
-
-    Container_Ext(k8sApi, "Kubernetes API", "Control Plane", "Проверка service-account JWT\nдля Vault Kubernetes Auth")
+    Container(vaultAgent, "Vault Agent (Sidecar)", "vault-agent",  "Читает serviceAccount JWT\nЛогинится в Vault через Kubernetes Auth\nРендерит секреты в файл / env")
+    Container(appWallet, "Wallet Service", "Java / Spring",   "Читает секреты из файла / env\n(12-factor configuration)")
+    Container(appQuery, "Payment Query Service", "Java / Spring",  "Читает секреты из файла / env\n(12-factor configuration)")
+    Container(appCallback, "Callback Service", "Java / Spring",  "Читает секреты из файла / env\n(12-factor configuration)")
+    ContainerDb(walletDb, "Wallet DB", "PostgreSQL", "Платёжные данные")
+    ContainerDb(queryDb, "Payment Query DB", "PostgreSQL", "История платежей")
+    ContainerDb(callbackDb, "Callback DB", "PostgreSQL", "Статусы callback")
+    Container_Ext(vault, "HashiCorp Vault", "Secrets Manager",   "Kubernetes Auth\nKV secrets\nDynamic credentials\nAudit log")
+    Container_Ext(k8sApi, "Kubernetes API", "Control Plane",   "TokenReview API\nВалидация serviceAccount JWT")
 }
 
-Rel(vaultAgent, vault, "Read secrets / dynamic creds", "HTTPS")
-Rel(vaultAgent, k8sApi, "Login via Kubernetes Auth\n(service account JWT)", "HTTPS")
+Rel(vaultAgent, vault, "Kubernetes Auth login\n+ read secrets", "HTTPS")
+Rel(vault, k8sApi, "TokenReview(jwt)", "HTTPS")
 
-Rel(vaultAgent, appWallet, "Inject secrets via file / volume or env vars", "shared volume / env")
-Rel(vaultAgent, appQuery, "Inject secrets via file / volume or env vars", "shared volume / env")
-Rel(vaultAgent, appCallback, "Inject secrets via file / volume or env vars", "shared volume / env")
+Rel(vaultAgent, appWallet, "Inject secrets\n(file / shared volume / env)", "local")
+Rel(vaultAgent, appQuery, "Inject secrets\n(file / shared volume / env)", "local")
+Rel(vaultAgent, appCallback, "Inject secrets\n(file / shared volume / env)", "local")
 
 Rel(appWallet, walletDb, "Read / Write", "JDBC")
 Rel(appQuery, queryDb, "Read / Write", "JDBC")

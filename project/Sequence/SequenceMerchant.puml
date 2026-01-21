@@ -1,0 +1,22 @@
+@startuml
+title OAuth2 Client Credentials Flow (Keycloak, M2M)
+
+participant "Payment Provider" as Client
+participant "Keycloak\n(Auth Server)" as KC
+participant "Callback Gateway" as CallbackGW
+
+== Token Request ==
+Client -> KC: POST /realms/{realm}/protocol/openid-connect/token\ngrant_type = client_credentials\nclient_id\nclient_secret
+
+KC -> KC: Validate client credentials\nCheck roles/scopes
+
+KC --> Client: 200 OK\naccess_token (JWT)
+
+== API Call ==
+Client -> CallbackGW: GET /api/resource\nAuthorization: Bearer access_token
+
+CallbackGW -> CallbackGW: Validate JWT\n(signature, exp, aud)\nCheck roles
+
+CallbackGW --> Client: 200 OK\nProtected resource
+
+@enduml

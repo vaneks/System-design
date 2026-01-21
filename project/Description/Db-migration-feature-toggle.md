@@ -75,7 +75,7 @@ if (featureFlag.isEnabled("payments.useStatusReason")) {
     return mapLegacyStatus(payment.getStatus());
 }
 
-- Запись не зависит от флага
+- Запись ведется в оба поля (status + status_reason)
 - Флаг влияет только на read-path
 - Флаг должен включаться динамически (без redeploy)
 
@@ -86,6 +86,19 @@ if (featureFlag.isEnabled("payments.useStatusReason")) {
 - расхождения статусов
 - DLQ по событиям PaymentResult
 - latency read-модели
+
+# PromQL и пороги
+
+Error rate
+Порог:
+- < 1% → ok
+- > 2% → fail
+- 1–2% → judgement
+
+Latency (P95)
+Порог:
+- < 500ms → ok
+- > 800ms → fail
 
 # Удаление legacy-логики
 
@@ -108,7 +121,21 @@ if (featureFlag.isEnabled("payments.useStatusReason")) {
 
 Немедленный rollback (payments.useStatusReason = false)
 
+# Finish
 
+После тщательного тестирования:
+- удаляем поле status
+- оставляем return payment.getStatusReason();
+
+# rollback boundary
+
+DROP COLUMN
+
+Код можно откатить, данные нет!
+Поэтому:
+- expand → migrate → contract
+- write new / read old
+- remove last
 
 
 

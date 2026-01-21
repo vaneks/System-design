@@ -12,7 +12,7 @@ participant "Payment Query Service" as Query
 User -> Client : Открыть приложение
 Client -> GW : GET /app\n(без токена)
 
-GW -> GW : Нет сессии / токена
+GW -> GW : Нет токена
 GW -> Client : 302 Redirect to IdP\n/auth?client_id=...\n&redirect_uri=...
 
 == Логин на стороне IdP ==
@@ -34,21 +34,21 @@ GW -> Client : 302 /200 + access_token
 
 == Доступ к API ==
 
-Client -> GW : POST /wallets/reserve\n(cookie или Authorization: Bearer access_token)
+Client -> GW : POST /wallets/reserve\n(Authorization: Bearer access_token)
 
 GW -> GW : Валидация JWT\n(signature / exp / aud / iss)
 
 GW -> Wallet : POST /reserve\nAuthorization: Bearer <JWT>
-Wallet -> Wallet : Валидация JWT\n(или доверие GW)\n+ авторизация по roles/scopes
+Wallet -> Wallet : Валидация JWT\n(signature / exp / aud / iss)\n+ авторизация по roles/scopes
 Wallet --> GW : 200 OK
 GW --> Client : 200 OK
 
-Client -> GW : POST /payment-query/history\n(cookie или Authorization: Bearer access_token)
+Client -> GW : POST /payment-query/history\n(Authorization: Bearer access_token)
 
 GW -> GW : Валидация JWT\n(signature / exp / aud / iss)
 
 GW -> Query : POST /history\nAuthorization: Bearer <JWT>
-Query -> Query : Валидация JWT\n(или доверие GW)\n+ авторизация по roles/scopes
+Query -> Query : Валидация JWT\n(signature / exp / aud / iss)\n+ авторизация по roles/scopes
 Query --> GW : 200 OK
 GW --> Client : 200 OK
 

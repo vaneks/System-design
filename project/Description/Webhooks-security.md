@@ -29,3 +29,27 @@ Callback содержит providerPaymentId
 Повторный callback:
 - ACK без side effects
 - PaymentResult не публикуется повторно
+
+## Ротация webhook secret без даунтайма
+
+Как делается:
+- Gateway хранит:
+  - current_secret
+  - previous_secret
+- Проверка подписи:
+  - сначала current 
+  - если fail → previous
+- Партнёру:
+  - выдаётся новый secret
+  - даётся grace period (N часов)
+- После окна:
+  - previous удаляется
+
+
+## ReplayStore down
+
+Fail-open
+
+- короткий TTL токена
+- downstream idempotency key
+- alerting на ReplayStore down

@@ -1,47 +1,49 @@
 @startuml
-title Vault Agent: получение секрета + ротация (TTL)
+title Vault Agent: Kubernetes Auth + secret rotation (TTL)
 
-participant "Vault Agent" as VA
-participant "Kubernetes API" as K8S
+participant "Vault Agent\n(sidecar)" as VA
 participant "HashiCorp Vault" as VAULT
+participant "Kubernetes API\n(TokenReview)" as K8S
 participant "Wallet Service" as WALLET
 participant "Payment Query Service" as QUERY
 participant "Callback Service" as CALLBACK
 
-== Старт пода ==
+== Старт pod ==
 
-VA -> K8S: auth (serviceAccount JWT)
-K8S --> VA: подтверждение (token / claims)
+VA -> VA: read serviceAccount JWT\n(/var/run/secrets/kubernetes.io)
+VA -> VAULT: POST /auth/kubernetes/login\n{ role, jwt }
 
-VA -> VAULT: login (k8s auth)
-VAULT --> VA: vault token (TTL)
+VAULT -> K8S: TokenReview(jwt)
+K8S --> VAULT: token valid\n+ serviceAccount claims
+
+VAULT --> VA: Vault token (TTL, policies)
 
 == Получение секрета ==
 
 VA -> VAULT: read secret\n/payment/provider_api_key
 VAULT --> VA: provider_api_key (version v1)
 
-VA -> WALLET: write secret to\n/vault/secrets/provider_key\n(file / env)
-VA -> QUERY: write secret to\n/vault/secrets/provider_key\n(file / env)
-VA -> CALLBACK: write secret to\n/vault/secrets/provider_key\n(file / env)
+VA -> WALLET: render secret\n(file / env)
+VA -> QUERY: render secret\n(file / env)
+VA -> CALLBACK: render secret\n(file / env)
 
-WALLET -> WALLET: load config\n(12-factor) из файла / ENV
-QUERY -> QUERY: load config\n(12-factor) из файла / ENV
-CALLBACK -> CALLBACK: load config\n(12-factor) из файла / ENV
+WALLET -> WALLET: load config\n(12-factor)
+QUERY -> QUERY: load config\n(12-factor)
+CALLBACK -> CALLBACK: load config\n(12-factor)
 
-== Ротация (TTL истёк / смена версии) ==
+== Ротация / обновление ==
 
-... через время ...
+... TTL истёк или версия секрета обновлена ...
 
 VA -> VAULT: renew token\nor re-read secret
 VAULT --> VA: provider_api_key (version v2)
 
-VA -> WALLET: overwrite file\nwith new secret
-VA -> QUERY: overwrite file\nwith new secret
-VA -> CALLBACK: overwrite file\nwith new secret
+VA -> WALLET: overwrite secret\n(file / env)
+VA -> QUERY: overwrite secret\n(file / env)
+VA -> CALLBACK: overwrite secret\n(file / env)
 
-WALLET -> WALLET: reload config\n(hot reload)\nили применить при следующем restart
-QUERY -> QUERY: reload config\n(hot reload)\nили применить при следующем restart
-CALLBACK -> CALLBACK: reload config\n(hot reload)\nили применить при следующем restart
+WALLET -> WALLET: hot reload\nor apply on restart
+QUERY -> QUERY: hot reload\nor apply on restart
+CALLBACK -> CALLBACK: hot reload\nor apply on restart
 
 @enduml

@@ -41,8 +41,9 @@
 - [Runbook](Description/Runbook.md)
 - [C4 Container - feature toggle migration](C4/Db_migration_feature_toggle.puml)
 - [Sequence - expand/contract migration](Sequence/Sequence_db_migration_expand.puml)
-
+- [Sequence - M2M](SequenceMerchant.puml)
 ---
 
 - [.gitlab-ci.yml](config/.gitlab-ci.yml)
 - [rollout.yaml](config/rollout.yaml)
+- [payment-error-rate.yaml](config/payment-error-rate.yaml)
